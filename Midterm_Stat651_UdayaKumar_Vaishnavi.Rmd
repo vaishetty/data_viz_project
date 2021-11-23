@@ -1,0 +1,206 @@
+---
+title: "STAT_651"
+author: "Vaishnavi Udaya Kumar"
+date: "11/20/2021"
+output: html_document
+---
+
+
+```{r}
+pacman::p_load("tidyverse","dygraphs","lubridate","ggpubr","ggplot2","scales","grid","reshape2","RColorBrewer","wordcloud","tm","leaflet","treemap","plyr","dplyr","ggrepel")
+```
+
+```{r}
+police_dep_incident <- read.csv("~/Downloads/Police_Department_Incident_Reports__2018_to_Present.csv")
+```
+
+
+```{r}
+pd_df <- police_dep_incident[!(police_dep_incident$Incident.Year > 2020),]
+```
+
+```{r}
+
+group <- c(rep("group-1",4),rep("group-2",2),rep("group-3",3))
+subgroup <- paste("subgroup" , c(1,2,3,4,1,2,1,2,3), sep="-")
+value <- c(13,5,22,12,11,7,3,1,23)
+data <- data.frame(group,subgroup,value)
+#data
+
+treemap(counts,
+            index=c("Category","Subcategory"),
+            vSize="Incident Category",
+            type="index"
+            ) 
+```
+
+
+```{r}
+ggplot(pd_df, aes(x = Incident.Day.of.Week), fill = Incident.Day.of.Week) +
+  geom_bar()+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+```{r}
+pd_df_wc <- pd_df[!(is.na(pd_df$Incident.Description) | pd_df$Incident.Description==""), ]
+pal <- brewer.pal(9, "Dark2")
+wordcloud(pd_df_wc$Incident.Description, min.freq=1, colors = pal, max.words = 200)
+```
+
+```{r}
+ggplot(pd_df, aes(x = reorder(Analysis.Neighborhood, Analysis.Neighborhood, function(x)-length(x))), fill = Analysis.Neighborhood) +
+  geom_bar(fill = "#FF6666")+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+```{r}
+pd_df$Incident.Hour <- str_sub(pd_df$Incident.Time, start=1, end=2)
+
+ggplot(pd_df, aes(y = Incident.Hour)) +
+  geom_bar(fill = "blue")+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+
+```{r}
+ggplot(pd_df, aes(x = Analysis.Neighborhood), fill = Analysis.Neighborhood) +
+  geom_bar(fill = "orange")+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+
+
+```{r}
+ggplot(pd_df, aes(x = Incident.Year)) +
+  geom_bar(fill = "blue")+theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+
+
+```{r}
+data <- subset(pd_df, Incident.Category == 'Drug Offense' | Incident.Category == 'Burglary')
+
+leaflet() %>% 
+  addTiles() %>% 
+  setView(-122.42, 37.78, zoom = 13) %>% 
+  addCircleMarkers(-122.42, 37.78, popup = 'Bay Area', radius = 5, color = 'red') %>% 
+  addTiles() %>% 
+  setView(-122.42, 37.78, zoom = 13) %>% 
+  addMarkers(data = data, lng = ~ Longitude, lat = ~ Latitude, popup = data$Incident.Category)
+```
+
+```{r}
+leaflet() %>% addTiles() %>% 
+  setView(-122.42, 37.78, zoom = 13) %>% 
+  addCircleMarkers(data = data, lng = ~ Longitude , lat = ~ Latitude, radius = 5, 
+                   color = ~ ifelse(Incident.Category == 'Bribery', 'red', 'blue'),
+                   clusterOptions = markerClusterOptions()) 
+```
+```
+
+
+```{r}
+day_freq_df <- as.data.frame.table(table(pd_df$Incident.Day.of.Week))
+theme_set(theme_classic())
+# Plot
+g <- ggplot(day_freq_df, aes(Var1, Freq))
+g + geom_bar(stat="identity", width = 0.5, fill="tomato2") + 
+      labs(title="San Francisco Police Dept.", 
+           subtitle="Crimes across the Week", 
+           caption="Source: Frequency of Manufacturers from 'mpg' dataset") +
+      theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+
+```{r}
+cat_freq_df <- as.data.frame.table(table(pd_df$Incident.Category))
+theme_set(theme_classic())
+# Plot
+g <- ggplot(cat_freq_df, aes(Var1, Freq))
+g + geom_bar(stat="identity", width = 0.5, fill="Green") + 
+      labs(title="San Francisco Police Dept.", 
+           subtitle="Crime Categories", 
+           caption="Source: DataSF (Police Department Incident Reports: 2018 to Present)") +
+      theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+
+```{r}
+theme_set(theme_classic())
+
+# prep data
+pd_df1 <- police_dep_incident %>% 
+  select(Police.District,Incident.Year) %>%
+  filter(Incident.Year %in% c(2018,2019),!Police.District %in% c("Tenderloin","Taraval")) %>%
+  group_by(Police.District,Incident.Year) %>%
+  dplyr::summarise(count = n()) %>%
+  spread(key = Incident.Year, value = count, fill=0,sep="") 
+
+pd_df1 <- pd_df1 %>% mutate(class=ifelse(Incident.Year2018 > Incident.Year2019,"green","red"))
+
+colnames(pd_df1) <- c("Police.District","Incident.Year2018","Incident.Year2019","class")
+left_label <- paste(pd_df1$Police.District, round(pd_df1$Incident.Year2018),sep=", ")
+right_label <- paste(pd_df1$Police.District, round(pd_df1$Incident.Year2019),sep=", ")
+
+
+# Plot
+p <- ggplot(pd_df1) + geom_segment(aes(x=1, xend=2, y=Incident.Year2018, yend=Incident.Year2019, col=class), size=.75, show.legend=F) + 
+                  geom_vline(xintercept=1, linetype="dashed", size=.1) + 
+                  geom_vline(xintercept=2, linetype="dashed", size=.1) +
+                  scale_color_manual(labels = c("Up", "Down"), 
+                                     values = c("green"="#00ba38", "red"="#f8766d")) +  # color of lines
+                  labs(x="", y="Incident Count") +  # Axis labels
+                  xlim(.5, 2.5) + ylim(0,(1.1*(max(pd_df1$Incident.Year2018,pd_df1$Incident.Year2019))))  # X and Y axis limits
+
+# Add texts
+p <- p + geom_text(label=left_label, y=pd_df1$Incident.Year2018, x=rep(1, NROW(pd_df1)), hjust=1.1, size=3.5)
+p <- p + geom_text(label=right_label, y=pd_df1$Incident.Year2019, x=rep(2, NROW(pd_df1)), hjust=-0.1, size=3.5)
+p <- p + geom_text(label="2018", x=1, y=1.1*(max(pd_df1$Incident.Year2018, pd_df1$Incident.Year2019)), hjust=1.2, size=5)  # title
+p <- p + geom_text(label="2019", x=2, y=1.1*(max(pd_df1$Incident.Year2018, pd_df1$Incident.Year2019)), hjust=-0.1, size=5)  # title
+
+# Minify theme
+p + theme(panel.background = element_blank(), 
+           panel.grid = element_blank(),
+           axis.ticks = element_blank(),
+           axis.text.x = element_blank(),
+           panel.border = element_blank(),
+           plot.margin = unit(c(1,2,1,2), "cm"))
+```
+
+```{r}
+theme_set(theme_classic())
+
+# prep data
+pd_df1 <- police_dep_incident %>% 
+  select(Police.District,Incident.Year) %>%
+  filter(Incident.Year %in% c(2019,2020),!Police.District %in% c("Tenderloin","Taraval","Mission")) %>%
+  group_by(Police.District,Incident.Year) %>%
+  dplyr::summarise(count = n()) %>%
+  spread(key = Incident.Year, value = count, fill=0,sep="") 
+
+pd_df1 <- pd_df1 %>% mutate(class=ifelse(Incident.Year2019 > Incident.Year2020,"green","red"))
+
+colnames(pd_df1) <- c("Police.District","Incident.Year2019","Incident.Year2020","class")
+left_label <- paste(pd_df1$Police.District, round(pd_df1$Incident.Year2019),sep=", ")
+right_label <- paste(pd_df1$Police.District, round(pd_df1$Incident.Year2020),sep=", ")
+
+
+# Plot
+p <- ggplot(pd_df1) + geom_segment(aes(x=1, xend=2, y=Incident.Year2019, yend=Incident.Year2020, col=class), size=.75, show.legend=F) + 
+                  geom_vline(xintercept=1, linetype="dashed", size=.1) + 
+                  geom_vline(xintercept=2, linetype="dashed", size=.1) +
+                  scale_color_manual(labels = c("Up", "Down"), 
+                                     values = c("green"="#00ba38", "red"="#f8766d")) +  # color of lines
+                  labs(x="", y="Incident Count") +  # Axis labels
+                  xlim(.5, 2.5) + ylim(0,(1.1*(max(pd_df1$Incident.Year2019,pd_df1$Incident.Year2020))))  # X and Y axis limits
+
+# Add texts
+p <- p + geom_text(label=left_label, y=pd_df1$Incident.Year2019, x=rep(1, NROW(pd_df1)), hjust=1.1, size=3.5)
+p <- p + geom_text(label=right_label, y=pd_df1$Incident.Year2020, x=rep(2, NROW(pd_df1)), hjust=-0.1, size=3.5)
+p <- p + geom_text(label="2019", x=1, y=1.1*(max(pd_df1$Incident.Year2019, pd_df1$Incident.Year2020)), hjust=1.2, size=5)  # title
+p <- p + geom_text(label="2020", x=2, y=1.1*(max(pd_df1$Incident.Year2019, pd_df1$Incident.Year2020)), hjust=-0.1, size=5)  # title
+
+# Minify theme
+p + theme(panel.background = element_blank(), 
+           panel.grid = element_blank(),
+           axis.ticks = element_blank(),
+           axis.text.x = element_blank(),
+           panel.border = element_blank(),
+           plot.margin = unit(c(1,2,1,2), "cm"))
+```
+
